@@ -1,5 +1,5 @@
 from __future__ import print_function
-from lib import models, graph, coarsening, utils, mesh_sampling
+from lib import models, graph, coarsening, utils, mesh_sampling_2 as mesh_sampling
 from lib.visualize_latent_space import visualize_latent_space
 import numpy as np
 import json
@@ -11,10 +11,10 @@ from opendr.topology import get_vert_connectivity
 import time
 
 parser = argparse.ArgumentParser(description='Tensorflow Trainer for Convolutional Mesh Autoencoders')
-parser.add_argument('--name', default='bareteeth', help='facial_motion| lfw ')
-parser.add_argument('--data', default='data/bareteeth', help='facial_motion| lfw ')
+parser.add_argument('--name', default='Left_Ventricle', help='Mesh ')
+parser.add_argument('--data', default='data/coma_cardiac/LV', help='Directory including files train.npy and test.npy')
 parser.add_argument('--batch_size', type=int, default=16, help='input batch size for training (default: 64)')
-parser.add_argument('--num_epochs', type=int, default=200, help='number of epochs to train (default: 2)')
+parser.add_argument('--num_epochs', type=int, default=200, help='number of epochs to train (default: 200)')
 parser.add_argument('--eval_frequency', type=int, default=200, help='eval frequency')
 parser.add_argument('--filter', default='chebyshev5', help='filter')
 parser.add_argument('--nz', type=int, default=8, help='Size of latent variable')
@@ -25,7 +25,7 @@ parser.add_argument('--seed', type=int, default=2, help='random seed (default: 1
 parser.add_argument('--mode', default='train', type=str, help='train or test')
 parser.add_argument('--viz', type=int, default=0, help='visualize while test')
 parser.add_argument('--loss', default='l1', help='l1 or l2')
-parser.add_argument('--reference_mesh_file', default='data/vtk_meshes/lv/lv_1000336.vtk', help='Reference mesh (to extract connectivity)')
+parser.add_argument('--reference_mesh_file', default='data/vtk_meshes/vtk_meshes/1000336/output.001.vtk', help='Reference mesh (to extract connectivity)')
 parser.add_argument('--mesh1', default='m1', help='for mesh interpolation')
 parser.add_argument('--mesh2', default='m1', help='for mesh interpolation')
 

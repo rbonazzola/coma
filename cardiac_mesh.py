@@ -29,6 +29,7 @@ class CardiacMesh(object):
         self.load()
 
         self.reference_mesh = Mesh(filename=reference_mesh_file) # to extract adjacency matrix
+        self.reference_mesh = self.reference_mesh.extractSubpart([1,2])
 
         # self.mean = np.mean(self.vertices_train, axis=0)
         # self.std = np.std(self.vertices_train, axis=0)
@@ -57,8 +58,8 @@ class CardiacMesh(object):
     def normalize(self):
 
         def normalize_(x):
-            x = x - x.mean
-            x = x / x.std
+            x = x - x.mean()
+            x = x / x.std()
             return x
 
         self.vertices_train = normalize_(self.vertices_train)

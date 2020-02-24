@@ -202,6 +202,7 @@ def qslim_decimator_transformer(mesh, factor=None, n_verts_desired=None):
 
 
 def _get_sparse_transform(faces, num_original_verts):
+
     verts_left = np.unique(faces.flatten())
     IS = np.arange(len(verts_left))
     JS = verts_left
@@ -216,7 +217,9 @@ def _get_sparse_transform(faces, num_original_verts):
 
     return (new_faces, mtx)
 
+
 def generate_transform_matrices(mesh, factors):
+
     """Generates len(factors) meshes, each of them is scaled by factors[i] and
        computes the transformations between them.
     
@@ -228,15 +231,16 @@ def generate_transform_matrices(mesh, factors):
     """
 
     factors = map(lambda x: 1.0/x, factors)
+
     M,A,D,U = [], [], [], []
-    A.append(get_vert_connectivity(mesh.v, mesh.f))
+    A.append(get_vert_connectivity(mesh.v, np.array(mesh.triangles)))
     M.append(mesh)
 
     for factor in factors:
         ds_f, ds_D = qslim_decimator_transformer(M[-1], factor=factor)
         D.append(ds_D)
         new_mesh_v = ds_D.dot(M[-1].v)
-        new_mesh = Mesh(v=new_mesh_v,f=ds_f)
+        new_mesh = Mesh(v=new_mesh_v, f=ds_f)
         M.append(new_mesh)
         A.append(get_vert_connectivity(new_mesh.v, new_mesh.f))
         U.append(setup_deformation_transfer(M[-1], M[-2]))

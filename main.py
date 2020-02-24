@@ -6,7 +6,7 @@ import json
 import os
 import copy
 import argparse
-from facemesh import FaceData
+from cardiac_mesh import CardiacMesh
 from opendr.topology import get_vert_connectivity
 import time
 
@@ -25,6 +25,7 @@ parser.add_argument('--seed', type=int, default=2, help='random seed (default: 1
 parser.add_argument('--mode', default='train', type=str, help='train or test')
 parser.add_argument('--viz', type=int, default=0, help='visualize while test')
 parser.add_argument('--loss', default='l1', help='l1 or l2')
+parser.add_argument('--reference_mesh_file', default='data/vtk_meshes/lv/lv_1000336.vtk', help='Reference mesh (to extract connectivity)')
 parser.add_argument('--mesh1', default='m1', help='for mesh interpolation')
 parser.add_argument('--mesh2', default='m1', help='for mesh interpolation')
 
@@ -34,26 +35,30 @@ args = parser.parse_args()
 np.random.seed(args.seed)
 nz = args.nz
 print("Loading data .. ")
-reference_mesh_file = 'data/template.obj'
-facedata = FaceData(nVal=100, train_file=args.data+'/train.npy',
-    test_file=args.data+'/test.npy', reference_mesh_file=reference_mesh_file, pca_n_comp=nz)
 
-ds_factors = [4,4,4,4]	# Sampling factor of the mesh at each stage of sampling
+cardiac_data = CardiacMesh(nVal=100,
+    train_file=args.data+'/train.npy',
+    test_file=args.data+'/test.npy',
+    reference_mesh_file=args.reference_mesh_file,
+    pca_n_comp=nz
+)
+
+ds_factors = [4, 4, 4, 4]	# Sampling factor of the mesh at each stage of sampling
 print("Generating Transform Matrices ..")
 
-# Generates adjecency matrices A, downsampling matrices D, and upsamling matrices U by sampling
+# Generates adjacency matrices A, downsampling matrices D, and upsampling matrices U by sampling
 # the mesh 4 times. Each time the mesh is sampled by a factor of 4
 
-M,A,D,U = mesh_sampling.generate_transform_matrices(facedata.reference_mesh, ds_factors)
+M, A, D, U = mesh_sampling.generate_transform_matrices(cardiac_data.reference_mesh, ds_factors)
 
-A = map(lambda x:x.astype('float32'), A)
-D = map(lambda x:x.astype('float32'), D)
-U = map(lambda x:x.astype('float32'), U)
-p = map(lambda x:x.shape[0], A)
+A = map(lambda x: x.astype('float32'), A)
+D = map(lambda x: x.astype('float32'), D)
+U = map(lambda x: x.astype('float32'), U)
+p = map(lambda x: x.shape[0], A)
 
-X_train = facedata.vertices_train.astype('float32')
-X_val = facedata.vertices_val.astype('float32')
-X_test = facedata.vertices_test.astype('float32')
+X_train = cardiac_data.vertices_train.astype('float32')
+X_val = cardiac_data.vertices_val.astype('float32')
+X_test = cardiac_data.vertices_test.astype('float32')
 
 print("Computing Graph Laplacians ..")
 L = [graph.laplacian(a, normalized=True) for a in A]
@@ -104,11 +109,14 @@ if args.mode in ['test']:
         for i in range(predictions.shape[0]/20):
             facedata.show_mesh(viewer=viewer_recon, mesh_vecs=predictions_unperm[i*20:(i+1)*20], figsize=(5,4))
             time.sleep(0.1)
+
 elif args.mode in ['sample']:
 	meshes = facedata.get_normalized_meshes(args.mesh1, args.mesh2)
 	features = model.encode(meshes)
+
 elif args.mode in ['latent']:
     visualize_latent_space(model, facedata)
+
 else:
 	if not os.path.exists(os.path.join('checkpoints', args.name)):
 	    os.makedirs(os.path.join('checkpoints', args.name))

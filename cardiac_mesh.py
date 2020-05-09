@@ -2,6 +2,8 @@ import glob
 import os
 import numpy as np
 import random
+import scipy
+import re
 
 # I rename the class VTKObject as Mesh so I don't have to change the function calls in the code
 from VTK.VTKMesh import VTKObject as Mesh  #, MeshViewer, MeshViewers
@@ -11,28 +13,40 @@ from copy import deepcopy
 import random
 from sklearn.decomposition import PCA
 from tqdm import tqdm # for the progress bar
+import scipy
 
 class CardiacMesh(object):
+    
+    subparts_ids = {
+      "all": None,
+      "LV": [1, 2],
+      "LV_endo": [1],
+      "LV_epi": [2],
+      "LA": [3],
+      "RV": [4],
+      "RA": [5],  
+    } 
 
-    def __init__(self, nVal, train_file, test_file, reference_mesh_file, pca_n_comp=8, fitpca=False):
+    def __init__(self, nVal, nTraining, train_file, reference_mesh_file, ids_file=None, pca_n_comp=8, fitpca=False, subpart=None):
 
         self.nVal = nVal
-        self.train_file, self.test_file = train_file, test_file
+        self.nTraining = nTraining
+        self.train_file = train_file
         self.vertices_train, self.vertices_val, self.vertices_test = None, None, None
+        self.ids_file = ids_file
 
         self.N = None
         self.n_vertex = None
         self.fitpca = fitpca
 
-        self.mean, self.std = None, None
-
+        self.reference_mesh = Mesh(filename=reference_mesh_file) # to extract adjacency matrix
+        if subpart is not None:
+            self.reference_mesh = self.reference_mesh.extractSubpart(subpart)
+        
         self.load()
 
-        self.reference_mesh = Mesh(filename=reference_mesh_file) # to extract adjacency matrix
-        self.reference_mesh = self.reference_mesh.extractSubpart([1,2])
-
-        # self.mean = np.mean(self.vertices_train, axis=0)
-        # self.std = np.std(self.vertices_train, axis=0)
+        self.mean = np.mean(self.vertices_train, axis=0)
+        self.std = np.std(self.vertices_train, axis=0)
         self.pca = PCA(n_components=pca_n_comp)
         self.pcaMatrix = None
         self.normalize()
@@ -44,27 +58,38 @@ class CardiacMesh(object):
         :return:
         '''
 
-        vertices_train = np.load(self.train_file)
-        self.mean, self.std = np.mean(vertices_train, axis=0), np.std(vertices_train, axis=0)
+        ## In spite of its name, the self.train_file should contain all the data
+        ## TODO: change this attribute's name
+        all_vertices = np.load(self.train_file, allow_pickle=True   ) # training + validation + testing
 
-        self.vertices_train = vertices_train[:-self.nVal]
-        self.vertices_val = vertices_train[-self.nVal:]
+        all_vertices = np.array([
+            scipy.spatial.procrustes(
+                all_vertices[i],
+                self.reference_mesh.points)[0]
+            for i in range(len(all_vertices))
+        ])
+
+        # Mean and std. deviation are computed based on all the samples (not only the training ones)
+        self.mean, self.std = np.mean(all_vertices, axis=0), np.std(all_vertices, axis=0)
+
+        ids = [x.strip() for x in open(self.ids_file)]
+
+        self.train_ids = ids[:self.nTraining]
+        self.val_ids = ids[self.nTraining: (self.nTraining + self.nVal)]
+        self.test_ids = ids[(self.nTraining + self.nVal):] 
+
+        self.vertices_train = all_vertices[:self.nTraining]
+        self.vertices_val = all_vertices[self.nTraining:(self.nTraining+self.nVal)]
+        self.vertices_test = all_vertices[(self.nTraining+self.nVal):]
 
         self.n_vertex = self.vertices_train.shape[1]
-
-        self.vertices_test = np.load(self.test_file)
 
 
     def normalize(self):
 
-        def normalize_(x):
-            x = x - x.mean()
-            x = x / x.std()
-            return x
-
-        self.vertices_train = normalize_(self.vertices_train)
-        self.vertices_val = normalize_(self.vertices_val)
-        self.vertices_test = normalize_(self.vertices_test)
+        self.vertices_train = (self.vertices_train - self.mean) / self.std
+        self.vertices_val = (self.vertices_val - self.mean) / self.std
+        self.vertices_test = (self.vertices_test - self.mean) / self.std
 
         self.N = self.vertices_train.shape[0]
 
@@ -145,10 +170,6 @@ class MakeSlicedTimeDataset(object):
 
 
     def gather_paths(self, test_fraction=0.1):
-        '''
-        :param opt: 'train' or 'test'
-        :return:
-        '''
 
         datapaths = []
         for subdir_name in self.folders:
@@ -166,7 +187,7 @@ class MakeSlicedTimeDataset(object):
         self.datapaths["train"] = [datapaths[i] for i in train_indices]
         self.datapaths["test"] = [datapaths[i] for i in test_indices]
 
-        print("Train data of size: {}\nTest data of size: {} ".format(len(self.datapaths["train"]), len(self.datapaths["train"])))
+        print("Train data of size: {}\nTest data of size: {} ".format(len(self.datapaths["train"]), len(self.datapaths["test"])))
 
 
     def gather_data(self, datapaths):
@@ -198,9 +219,124 @@ class MakeSlicedTimeDataset(object):
 
         return 0
 
+    
 
-def generateSlicedTimeDataSet(data_path, save_path):
+class NumpyFromVTKs(object):
+    
+    """docstring for NumpyFromVTKs"""
 
-    MakeSlicedTimeDataset(folders=folder, folder_structure="*/*vtk", partition_ids=[1, 2], N_subj=5000)
-    # MakeSlicedTimeDataset(folders=[data_path], dataset_name=os.path.join(save_path, 'sliced'))
+    def __init__(self, folders, 
+                   filename_pattern, 
+                   dataset_name, 
+                   partition_ids=None, 
+                   subj_ids=None, N_subj=None):
+        
+        '''          
+          - subj_ids: list of subject IDs to draw samples from (if None, it's all the subjects)
+          - N_subj: number of subjects to sample (if None, it's all the subjects from subj_ids)
+        '''
+        
+        self.folders = folders if isinstance(folders, list) else [folders]
+        self.filename_pattern = os.path.join(folders, filename_pattern)
+        self.regex = re.compile(self.filename_pattern.replace("*","(.*)"))
+        
+        self.dataset_name = dataset_name # output directory        
+        # self.output_filename = os.path.join(self.dataset_name, output_filename)
+        # self.ids_filename = self.output_filename + "_subj_ids.txt"
+        
+        self.partition_ids = partition_ids
+        self.N_subj = N_subj
+        self.subj_ids = subj_ids 
+
+        self.gather_paths()
+        self.vertices = self.gather_data()
+       
+           
+    def extract_id_from_path(self, path):
+        id = self.regex.match(path).group(1)
+        return id
+        
+        
+    def gather_paths(self):
+        
+        '''
+          Gather all the paths associated to mesh files
+        '''
+
+        datapaths = []
+        for subdir_name in self.folders:
+            datapaths.extend(sorted(glob.glob(self.filename_pattern)))
+        
+        path_dict = {self.extract_id_from_path(x): x for x in datapaths}
+            
+        if self.subj_ids is None:
+            ids = path_dict.keys() # [extract_id_from_path(x) x for x in datapaths]
+        else:
+            ids = [x for x in path_dict.keys() if x in subj_ids]
+                                        
+        if self.N_subj is not None:
+            random.shuffle(ids)            
+            # TODO: add sanity check for case when N_subj > len(ids)
+            ids = ids[0:self.N_subj]        
+            
+        datapaths = [path_dict[i] for i in ids]
+        self.subj_ids = ids
+        self.datapaths = datapaths
+
+
+    def gather_data(self):
+        vertices = []
+
+        # tqdm: for progress bar (I think)
+        for p in tqdm(self.datapaths, unit="subjects"):
+            mesh_filename = p
+            mesh = Mesh(filename=mesh_filename, load_connectivity=False) # Load mesh
+            mesh = Mesh.extractSubpart(mesh, self.partition_ids)
+            vertices.append(mesh.points)
+
+        return np.array(vertices)
+
+
+    def save_vertices(self, output_filename, ids_filename=None):
+
+        #print(output_filename)
+        #print(os.path.dirname(output_filename))
+
+        if not os.path.exists(os.path.dirname(output_filename)):
+            print(os.path.dirname(output_filename))
+            os.makedirs(os.path.dirname(output_filename))
+
+        if not output_filename.endswith(".npy"):
+            output_filename += ".npy"
+
+        if ids_filename is None:
+            ids_filename = output_filename if not output_filename.endswith(".npy") else output_filename[:-4]
+            ids_filename += "_subject_ids.txt"
+            #print(ids_filename)
+
+        if not os.path.exists(output_filename) and not os.path.exists(ids_filename):
+            np.save(output_filename, self.vertices)
+            with open(ids_filename, "w") as ff:
+                ff.write("\n".join(self.subj_ids))
+        else:
+            print("File already exists")
+            return 1
+        
+        return 0
+    
+    
+def generateNumpyDataset(data_path, save_path, partition, subj_ids=None, N_subj=None):
+    # folders = "/MULTIX/DATA/INPUT/disk_2/coma/Cardio/meshes/vtk_meshes",
+    # dataset_name="/MULTIX/DATA/INPUT/disk_2/coma/Cardio/meshes/LV_all_subjects",
+    npy = NumpyFromVTKs(
+      folders=data_path,
+      filename_pattern="*/output.001.vtk",
+      dataset_name=save_path,
+      subj_ids=subj_ids,
+      N_subj=N_subj, # all
+      partition_ids=CardiacMesh.subparts_ids[partition]
+    )
+
+    npy.save_vertices(save_path)
+    
     return 0

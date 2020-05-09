@@ -1,0 +1,36 @@
+# Data
+partition: "LV"
+reference_mesh_file: '/MULTIX/DATA/INPUT/disk_2/coma/Cardio/meshes/vtk_meshes/1000336/output.001.vtk'
+data_file: "/MULTIX/DATA/INPUT/disk_2/coma/Cardio/meshes/numpy_files/LV_all_subjects/train.npy"
+ids_file: "/MULTIX/DATA/INPUT/disk_2/coma/Cardio/meshes/numpy_files/LV_all_subjects/LVED_all_subjects_subj_ids.txt"
+random_seed: 2
+nVal: 32
+nTraining: 160
+nTest: 160
+#
+# Architecture
+filter: 'chebyshev5'
+ds_factors: [4, 4, 2, 2]
+nz: [8] # I don't like that this must be a list
+p: 
+K: [6, 6, 6, 6] # polynomial orders
+F: [16, 16, 16, 32] # number of convolutional filters
+brelu: "b1relu"
+pool: "poolwT"
+unpool: "poolwT"
+#
+# Training
+regularization: 5e-4
+dropout: 1
+decay_rate: 0.99
+momentum: 0.9
+which_loss: "l2"
+learning_rate: 8e-3
+num_epochs: 100
+eval_frequency: 200
+batch_size: 16
+#
+# Output paths
+checkpoint_dir: "/MULTIX/DATA/INPUT/disk_2/coma/Cardio/output/checkpoints"
+summaries_dir: "/MULTIX/DATA/INPUT/disk_2/coma/Cardio/output/summaries"
+dir_name: "LV_1000"

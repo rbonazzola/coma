@@ -22,7 +22,7 @@ def vertex_quadrics(mesh):
     for f_idx in range(len(mesh.f)):
 
         # Compute normalized plane equation for that face
-        vert_idxs = mesh.f[f_idx]
+        vert_idxs = np.array(mesh.f)[f_idx]
         verts = np.hstack((mesh.v[vert_idxs], np.array([1, 1, 1]).reshape(-1, 1)))
         u, s, v = np.linalg.svd(verts)
         eq = v[-1, :].reshape(-1, 1)

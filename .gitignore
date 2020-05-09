@@ -3,4 +3,5 @@ summaries/*
 logger.txt
 *.pyc
 *.npy
-
+*.ipynb_checkpoints*
+*.swp

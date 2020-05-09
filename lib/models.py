@@ -5,7 +5,7 @@ import sklearn
 import scipy.sparse
 import numpy as np
 import os, time, collections, shutil
-import tensorflow.contrib.keras as keras
+# import tensorflow.contrib.keras as keras
 
 
 #NFEATURES = 28**2
@@ -89,11 +89,11 @@ class base_model(object):
     def fit(self, train_data, train_labels, val_data, val_labels):
         t_process, t_wall = time.clock(), time.time()
         sess = tf.Session(graph=self.graph)
-        shutil.rmtree(self._get_path('summaries'), ignore_errors=True)
-        writer = tf.summary.FileWriter(self._get_path('summaries'), self.graph)
-        shutil.rmtree(self._get_path('checkpoints'), ignore_errors=True)
-        os.makedirs(self._get_path('checkpoints'))
-        path = os.path.join(self._get_path('checkpoints'), 'model')
+        shutil.rmtree(self._get_path(self.summaries_dir), ignore_errors=True)
+        writer = tf.summary.FileWriter(self._get_path(self.summaries_dir), self.graph)
+        shutil.rmtree(self._get_path(self.checkpoint_dir), ignore_errors=True)
+        os.makedirs(self._get_path(self.checkpoint_dir))
+        path = os.path.join(self._get_path(self.checkpoint_dir), 'model')
         sess.run(self.op_init)
 
         # Training.
@@ -324,7 +324,8 @@ class base_model(object):
         """Restore parameters if no session given."""
         if sess is None:
             sess = tf.Session(graph=self.graph)
-            filename = tf.train.latest_checkpoint(self._get_path('checkpoints'))
+            
+            filename = tf.train.latest_checkpoint(self._get_path(self.checkpoint_dir))
             self.op_saver.restore(sess, filename)
         return sess
 
@@ -805,7 +806,7 @@ class cgcnn(base_model):
                 regularization=0, dropout=0, batch_size=100, eval_frequency=200,
                 dir_name=''):
         super(cgcnn, self).__init__()
-        
+       
         # Verify the consistency w.r.t. the number of layers.
         assert len(L) >= len(F) == len(K) == len(p)
         assert np.all(np.array(p) >= 1)
@@ -885,7 +886,7 @@ class cgcnn(base_model):
         return tf.transpose(x, perm=[0, 2, 1])  # N x M x Fout
 
     def fourier(self, x, L, Fout, K):
-        print K, L.shape[0]
+        # print K, L.shape[0]
         assert K == L.shape[0]  # artificial but useful to compute number of parameters
         N, M, Fin = x.get_shape()
         N, M, Fin = int(N), int(M), int(Fin)
@@ -1030,7 +1031,7 @@ class cgcnn(base_model):
             with tf.variable_scope('conv{}'.format(i+1)):
                 with tf.name_scope('filter'):
                     x = self.filter(x, self.L[i], self.F[i], self.K[i])
-                    print(self.L[i], self.F[i], self.K[i])
+                    # print(self.L[i], self.F[i], self.K[i])
                 with tf.name_scope('bias_relu'):
                     x = self.brelu(x)
                 with tf.name_scope('pooling'):
@@ -1054,7 +1055,7 @@ class cgcnn(base_model):
                     x = self.unpool(x, self.p[i])
                 with tf.name_scope('filter'):
                     x = self.filter(x, self.L[len(self.p)-i-1], self.F[-(i+1)], self.K[-(i+1)])
-                    print(self.L[-(i+1)], self.F[-(i+1)], self.K[-(i+1)])
+                    # print(self.L[-(i+1)], self.F[-(i+1)], self.K[-(i+1)])
                 with tf.name_scope('bias_relu'):
                     x = self.brelu(x)
 
@@ -1109,7 +1110,7 @@ class coma(base_model):
     """
     def __init__(self, L, D, U, F, K, p, nz, nv, which_loss, F_0=1, filter='chebyshev5', brelu='b1relu', pool='mpool1',
                 unpool='poolwT', num_epochs=20, learning_rate=0.1, decay_rate=0.95, decay_steps=None, momentum=0.9,
-                regularization=0, dropout=0, batch_size=100, eval_frequency=200,
+                regularization=0, dropout=0, batch_size=100, eval_frequency=200, output_dir="/MULTIX/DATA/OUTPUT/coma", checkpoint_dir="checkpoints", summaries_dir="summaries",
                 dir_name=''):
         super(coma, self).__init__()
         
@@ -1163,6 +1164,8 @@ class coma(base_model):
         self.decay_rate, self.decay_steps, self.momentum = decay_rate, decay_steps, momentum
         self.regularization, self.dropout = regularization, dropout
         self.batch_size, self.eval_frequency = batch_size, eval_frequency
+        self.checkpoint_dir = os.path.join(output_dir, checkpoint_dir)
+        self.summaries_dir = os.path.join(output_dir, summaries_dir)
         self.dir_name = dir_name
         self.filter = getattr(self, filter)
         self.brelu = getattr(self, brelu)
@@ -1280,7 +1283,7 @@ class coma(base_model):
                 with tf.variable_scope('conv{}'.format(i+1)):
                     with tf.name_scope('filter'):
                         x = self.filter(x, self.L[i], self.F[i], self.K[i])
-                        print(self.L[i], self.F[i], self.K[i])
+                        # print(self.L[i], self.F[i], self.K[i])
                     with tf.name_scope('bias_relu'):
                         x = self.brelu(x)
                     with tf.name_scope('pooling'):
@@ -1309,7 +1312,7 @@ class coma(base_model):
                         x = self.unpool(x, self.U[-i-1])
                     with tf.name_scope('filter'):
                         x = self.filter(x, self.L[len(self.F)-i-1], self.F[-i-1], self.K[-i-1])
-                        print(self.L[-(i+1)], self.F[-(i+1)], self.K[-(i+1)])
+                        # print(self.L[-(i+1)], self.F[-(i+1)], self.K[-(i+1)])
                     with tf.name_scope('bias_relu'):
                         x = self.brelu(x)
 
